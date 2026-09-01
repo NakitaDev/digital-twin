@@ -1,0 +1,21 @@
+{
+  "full_name": "Atichat Chaisarn",
+  "name": "Night",
+  "current_role": "AI Engineer",
+  "location": "Bangkok, Thailand",
+  "email": "atichat.cs@gmail.com",
+  "linkedin": "linkedin.com/in/yourprofile",
+  "specialties": [
+    "LLM applications",
+    "RAG pipelines",
+    "Agentic systems"
+  ],
+  "years_experience": 1,
+  "education": [
+    {
+      "degree": "B.Eng in Civil Engineering",
+      "institution": "Chulalongkorn University",
+      "year": "2021–2025"
+    }
+  ]
+}

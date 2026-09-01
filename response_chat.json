@@ -1,0 +1,1 @@
+{"statusCode": 429, "body": "{\"detail\":\"Bedrock token limit reached: Too many tokens per day, please wait before trying again.\"}", "headers": {"content-length": "99", "content-type": "application/json"}, "isBase64Encoded": false}
