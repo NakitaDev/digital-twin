@@ -51,3 +51,16 @@ variable "root_domain" {
   type        = string
   default     = ""
 }
+
+variable "openrouter_api_key" {
+  description = "OpenRouter API Key for fallback LLM"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "openrouter_model" {
+  description = "OpenRouter fallback model ID"
+  type        = string
+  default     = "inclusionai/ling-3.0-flash-fin:free"
+}

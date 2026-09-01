@@ -19,7 +19,10 @@ export default function Twin() {
   const [isRestoring, setIsRestoring] = useState(true);
   const [sessionId, setSessionId] = useState<string>('');
   const [isDark, setIsDark] = useState<boolean>(false);
+  const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -28,6 +31,29 @@ export default function Twin() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Check if avatar image exists (supports both avatar.jpg and avatar.png)
+  useEffect(() => {
+    fetch('/avatar.jpg', { method: 'HEAD' })
+      .then((res) => {
+        if (res.ok) {
+          setAvatarSrc('/avatar.jpg');
+        } else {
+          fetch('/avatar.png', { method: 'HEAD' })
+            .then((res2) => {
+              if (res2.ok) setAvatarSrc('/avatar.png');
+            })
+            .catch(() => setAvatarSrc(null));
+        }
+      })
+      .catch(() => {
+        fetch('/avatar.png', { method: 'HEAD' })
+          .then((res2) => {
+            if (res2.ok) setAvatarSrc('/avatar.png');
+          })
+          .catch(() => setAvatarSrc(null));
+      });
+  }, []);
 
   // Load and apply theme preference on mount
   useEffect(() => {
@@ -81,9 +107,15 @@ export default function Twin() {
         })
         .finally(() => {
           setIsRestoring(false);
+          setTimeout(() => {
+            inputRef.current?.focus();
+          }, 100);
         });
     } else {
       setIsRestoring(false);
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   }, []);
 
@@ -108,7 +140,7 @@ export default function Twin() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: input,
+          message: userMessage.content,
           session_id: sessionId || undefined,
         }),
       });
@@ -144,6 +176,10 @@ export default function Twin() {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      // Automatically refocus the input after response is received
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -161,6 +197,9 @@ export default function Twin() {
     setSessionId('');
     setMessages([]);
     setInput('');
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
   };
 
   return (
@@ -213,7 +252,15 @@ export default function Twin() {
           </div>
         ) : messages.length === 0 ? (
           <div className="text-center text-gray-500 dark:text-slate-400 mt-8">
-            <Bot className="w-12 h-12 mx-auto mb-3 text-gray-400 dark:text-cyan-400/80" />
+            {avatarSrc ? (
+              <img
+                src={avatarSrc}
+                alt="Digital Twin Avatar"
+                className="w-20 h-20 rounded-full mx-auto mb-3 border-2 border-gray-300 dark:border-cyan-500/40 object-cover shadow-sm"
+              />
+            ) : (
+              <Bot className="w-12 h-12 mx-auto mb-3 text-gray-400 dark:text-cyan-400/80" />
+            )}
             <p className="font-medium text-gray-700 dark:text-slate-200">Hello! I&apos;m your Digital Twin.</p>
             <p className="text-sm mt-1">Ask me anything about AI deployment!</p>
           </div>
@@ -226,9 +273,17 @@ export default function Twin() {
             >
               {message.role === 'assistant' && (
                 <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-slate-700 dark:bg-cyan-950/80 border border-transparent dark:border-cyan-500/30 rounded-full flex items-center justify-center">
-                    <Bot className="w-5 h-5 text-white dark:text-cyan-400" />
-                  </div>
+                  {avatarSrc ? (
+                    <img
+                      src={avatarSrc}
+                      alt="Digital Twin Avatar"
+                      className="w-8 h-8 rounded-full border border-slate-300 dark:border-cyan-500/40 object-cover shadow-xs"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 bg-slate-700 dark:bg-cyan-950/80 border border-transparent dark:border-cyan-500/30 rounded-full flex items-center justify-center">
+                      <Bot className="w-5 h-5 text-white dark:text-cyan-400" />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -263,9 +318,17 @@ export default function Twin() {
         {isLoading && (
           <div className="flex gap-3 justify-start">
             <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-slate-700 dark:bg-cyan-950/80 rounded-full flex items-center justify-center">
-                <Bot className="w-5 h-5 text-white dark:text-cyan-400" />
-              </div>
+              {avatarSrc ? (
+                <img
+                  src={avatarSrc}
+                  alt="Digital Twin Avatar"
+                  className="w-8 h-8 rounded-full border border-slate-300 dark:border-cyan-500/40 object-cover shadow-xs"
+                />
+              ) : (
+                <div className="w-8 h-8 bg-slate-700 dark:bg-cyan-950/80 rounded-full flex items-center justify-center">
+                  <Bot className="w-5 h-5 text-white dark:text-cyan-400" />
+                </div>
+              )}
             </div>
             <div className="bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-[#1e293b] rounded-lg p-3 shadow-sm">
               <div className="flex space-x-2">
@@ -284,6 +347,7 @@ export default function Twin() {
       <div className="border-t border-gray-200 dark:border-[#1e293b] p-4 bg-white dark:bg-[#0f172a] rounded-b-lg transition-colors duration-200">
         <div className="flex gap-2">
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -291,6 +355,7 @@ export default function Twin() {
             placeholder="Type your message..."
             className="flex-1 px-4 py-2 border border-gray-300 dark:border-[#1e293b] rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-600 dark:focus:ring-cyan-500/60 focus:border-transparent text-gray-800 dark:text-slate-100 bg-white dark:bg-[#020617] placeholder-gray-400 dark:placeholder-slate-500 transition-colors"
             disabled={isLoading || isRestoring}
+            autoFocus
           />
           <button
             onClick={sendMessage}

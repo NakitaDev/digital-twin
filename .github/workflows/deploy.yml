@@ -63,12 +63,16 @@ jobs:
           # Set environment variables for the script
           export AWS_ACCOUNT_ID=${{ secrets.AWS_ACCOUNT_ID }}
           export DEFAULT_AWS_REGION=${{ secrets.DEFAULT_AWS_REGION }}
+          export OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}"
+          export OPENROUTER_MODEL="${{ vars.OPENROUTER_MODEL || secrets.OPENROUTER_MODEL || 'inclusionai/ling-3.0-flash-fin:free' }}"
           
           # Make script executable and run it
           chmod +x scripts/deploy.sh
           ./scripts/deploy.sh ${{ github.event.inputs.environment || 'dev' }}
         env:
           AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || secrets.OPENROUTER_MODEL || 'inclusionai/ling-3.0-flash-fin:free' }}
           
       - name: Get Deployment URLs
         id: deploy_outputs

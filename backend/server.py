@@ -32,8 +32,14 @@ bedrock_client = boto3.client(
     region_name=os.getenv("DEFAULT_AWS_REGION", "ap-southeast-1")
 )
 
+from openai import OpenAI
+
 # Bedrock model selection - see Q42 on https://edwarddonner.com/faq for more
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")
+
+# OpenRouter fallback configuration
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "inclusionai/ling-3.0-flash-fin:free")
 
 # Memory storage configuration
 USE_S3 = os.getenv("USE_S3", "false").lower() == "true"
@@ -159,13 +165,72 @@ def call_bedrock(conversation: List[Dict], user_message: str) -> str:
             raise HTTPException(status_code=500, detail=f"Bedrock error: {error_msg}")
 
 
+def call_openrouter(conversation: List[Dict], user_message: str) -> str:
+    """Call OpenRouter as a fallback LLM using the OpenAI SDK"""
+    if not OPENROUTER_API_KEY:
+        raise ValueError("OPENROUTER_API_KEY is not configured")
+
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=OPENROUTER_API_KEY,
+        default_headers={
+            "HTTP-Referer": "https://digital-twin.aws",
+            "X-Title": "Digital Twin",
+        },
+    )
+
+    messages = [{"role": "system", "content": prompt()}]
+    for msg in conversation[-20:]:
+        messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.append({"role": "user", "content": user_message})
+
+    response = client.chat.completions.create(
+        model=OPENROUTER_MODEL,
+        messages=messages,
+        temperature=0.7,
+        max_tokens=1500,
+    )
+
+    if response.choices and len(response.choices) > 0:
+        return response.choices[0].message.content or ""
+    return ""
+
+
+def generate_response(conversation: List[Dict], user_message: str) -> str:
+    """Try Bedrock first, seamlessly fall back to OpenRouter on any failure"""
+    bedrock_err = None
+    try:
+        return call_bedrock(conversation, user_message)
+    except Exception as err:
+        bedrock_err = err
+        print(f"⚠️ Primary LLM (Bedrock) failed: {err}")
+
+    # Fallback to OpenRouter if API key is present
+    if OPENROUTER_API_KEY:
+        print(f"🔄 Falling back to OpenRouter ({OPENROUTER_MODEL})...")
+        try:
+            return call_openrouter(conversation, user_message)
+        except Exception as or_err:
+            print(f"❌ OpenRouter fallback also failed: {or_err}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Both Bedrock ({bedrock_err}) and OpenRouter fallback ({or_err}) failed.",
+            )
+
+    # If OpenRouter is not configured, bubble up Bedrock error
+    if isinstance(bedrock_err, HTTPException):
+        raise bedrock_err
+    raise HTTPException(status_code=500, detail=str(bedrock_err))
+
+
 @app.get("/")
 async def root():
     return {
-        "message": "AI Digital Twin API (Powered by AWS Bedrock)",
+        "message": "AI Digital Twin API",
         "memory_enabled": True,
         "storage": "S3" if USE_S3 else "local",
-        "ai_model": BEDROCK_MODEL_ID
+        "primary_model": BEDROCK_MODEL_ID,
+        "fallback_model": OPENROUTER_MODEL if OPENROUTER_API_KEY else None,
     }
 
 
@@ -174,7 +239,9 @@ async def health_check():
     return {
         "status": "healthy", 
         "use_s3": USE_S3,
-        "bedrock_model": BEDROCK_MODEL_ID
+        "bedrock_model": BEDROCK_MODEL_ID,
+        "openrouter_configured": bool(OPENROUTER_API_KEY),
+        "openrouter_model": OPENROUTER_MODEL,
     }
 
 
@@ -187,8 +254,8 @@ async def chat(request: ChatRequest):
         # Load conversation history
         conversation = load_conversation(session_id)
 
-        # Call Bedrock for response
-        assistant_response = call_bedrock(conversation, request.message)
+        # Generate response using Bedrock with OpenRouter fallback
+        assistant_response = generate_response(conversation, request.message)
 
         # Update conversation history
         conversation.append(

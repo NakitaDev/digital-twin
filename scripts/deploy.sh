@@ -28,6 +28,10 @@ else
   terraform workspace select "$ENVIRONMENT"
 fi
 
+# Pass OpenRouter variables to Terraform if set
+export TF_VAR_openrouter_api_key="${OPENROUTER_API_KEY:-}"
+export TF_VAR_openrouter_model="${OPENROUTER_MODEL:-inclusionai/ling-3.0-flash-fin:free}"
+
 # Use prod.tfvars for production environment
 if [ "$ENVIRONMENT" = "prod" ]; then
   TF_APPLY_CMD=(terraform apply -var-file=prod.tfvars -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" -auto-approve)
