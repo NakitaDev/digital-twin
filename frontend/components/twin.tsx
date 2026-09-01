@@ -18,7 +18,7 @@ export default function Twin() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(true);
   const [sessionId, setSessionId] = useState<string>('');
-  const [isDark, setIsDark] = useState<boolean>(false);
+  const [isDark, setIsDark] = useState<boolean>(true);
   const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -55,14 +55,13 @@ export default function Twin() {
       });
   }, []);
 
-  // Load and apply theme preference on mount
+  // Load and apply theme preference on mount (default to dark)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const savedTheme = localStorage.getItem('twin_theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const initialDark = savedTheme ? savedTheme === 'dark' : prefersDark;
-    setIsDark(initialDark);
-    document.documentElement.classList.toggle('dark', initialDark);
+    const activeDark = savedTheme ? savedTheme === 'dark' : true;
+    setIsDark(activeDark);
+    document.documentElement.classList.toggle('dark', activeDark);
   }, []);
 
   const toggleTheme = () => {
@@ -74,10 +73,31 @@ export default function Twin() {
     }
   };
 
-  // Restore previous session from localStorage on mount
+  // Restore previous session from localStorage and backend
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
+    // 1. Immediately restore messages from local cache for zero-latency display
+    const cachedMessages = localStorage.getItem('twin_messages');
+    if (cachedMessages) {
+      try {
+        const parsed = JSON.parse(cachedMessages);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(
+            parsed.map((m: { id: string; role: string; content: string; timestamp?: string }) => ({
+              id: m.id || String(Date.now()),
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+              timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+            }))
+          );
+        }
+      } catch (err) {
+        console.error('Failed to parse cached messages:', err);
+      }
+    }
+
+    // 2. Sync with backend if session ID exists
     const savedSessionId = localStorage.getItem('twin_session_id');
     if (savedSessionId) {
       setSessionId(savedSessionId);
@@ -85,25 +105,25 @@ export default function Twin() {
 
       fetch(`${API_BASE_URL}/conversation/${savedSessionId}`)
         .then((res) => {
-          if (!res.ok) throw new Error('Failed to fetch existing conversation');
+          if (!res.ok) throw new Error(`Failed to fetch conversation (${res.status})`);
           return res.json();
         })
         .then((data) => {
           if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
-            setMessages(
-              data.messages.map((m: { role: string; content: string; timestamp?: string }, idx: number) => ({
+            const formatted: Message[] = data.messages.map(
+              (m: { role: string; content: string; timestamp?: string }, idx: number) => ({
                 id: `${savedSessionId}-${idx}`,
                 role: m.role as 'user' | 'assistant',
                 content: m.content,
                 timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
-              }))
+              })
             );
+            setMessages(formatted);
+            localStorage.setItem('twin_messages', JSON.stringify(formatted));
           }
         })
         .catch((err) => {
-          console.error('Session restore failed:', err);
-          localStorage.removeItem('twin_session_id');
-          setSessionId('');
+          console.warn('Session sync warning (using cached conversation if available):', err);
         })
         .finally(() => {
           setIsRestoring(false);
@@ -129,7 +149,13 @@ export default function Twin() {
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => {
+      const next = [...prev, userMessage];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('twin_messages', JSON.stringify(next));
+      }
+      return next;
+    });
     setInput('');
     setIsLoading(true);
 
@@ -164,7 +190,13 @@ export default function Twin() {
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev) => {
+        const next = [...prev, assistantMessage];
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('twin_messages', JSON.stringify(next));
+        }
+        return next;
+      });
     } catch (error) {
       console.error('Error:', error);
       const errorMessage: Message = {
@@ -173,7 +205,13 @@ export default function Twin() {
         content: 'Sorry, I encountered an error. Please try again.',
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) => {
+        const next = [...prev, errorMessage];
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('twin_messages', JSON.stringify(next));
+        }
+        return next;
+      });
     } finally {
       setIsLoading(false);
       // Automatically refocus the input after response is received
@@ -193,6 +231,7 @@ export default function Twin() {
   const handleNewChat = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('twin_session_id');
+      localStorage.removeItem('twin_messages');
     }
     setSessionId('');
     setMessages([]);
