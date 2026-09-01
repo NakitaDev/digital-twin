@@ -42,3 +42,4 @@ Thumbs.db
 
 # Markdown
 *.md
+!README.md
